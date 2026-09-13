@@ -352,7 +352,16 @@ export default function AuthScreen() {
 
     if (!isLogin) {
       if (!passwordValid) {
-        setError(PASSWORD_POLICY_MESSAGE);
+        // Name the rule that failed rather than the whole policy. The one
+        // people hit is the 15-character ceiling: a password manager pastes
+        // 20 characters, the checklist quietly shows one unmet item, and the
+        // policy sentence reads like the password is fine.
+        const missing = PASSWORD_REQUIREMENTS.filter((req) => !passwordChecks[req.key]).map((req) => req.label.toLowerCase());
+        setError(
+          missing.length === 1
+            ? `Your password needs ${missing[0]}.`
+            : `Your password still needs: ${missing.join(', ')}.`
+        );
         return;
       }
       if (!agreeTerms) {
@@ -575,7 +584,13 @@ export default function AuthScreen() {
                             {PASSWORD_REQUIREMENTS.map((req) => (
                               <li
                                 key={req.key}
-                                className={`flex items-center gap-1.5 text-xs ${passwordChecks[req.key] ? 'text-natural-text' : 'text-natural-muted'}`}
+                                className={`flex items-center gap-1.5 text-xs ${
+                                  passwordChecks[req.key]
+                                    ? 'text-natural-text'
+                                    : error
+                                      ? 'text-natural-primary font-semibold'
+                                      : 'text-natural-muted'
+                                }`}
                               >
                                 <span>{passwordChecks[req.key] ? '✓' : '○'}</span> {req.label}
                               </li>
@@ -650,7 +665,7 @@ export default function AuthScreen() {
 
                   <button
                     type="submit"
-                    disabled={loading || (!isReset && !isLogin && (!passwordValid || !agreeTerms))}
+                    disabled={loading}
                     className="w-full bg-natural-primary text-white font-medium py-2 px-4 rounded-md hover:bg-natural-primary/90 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed mt-2"
                   >
                     {emailLoading
