@@ -1,14 +1,27 @@
 import express from 'express';
 import { rateLimit, requireAuth, requireSecret } from '../middleware';
 import { ensureAdminApp } from '../shared';
+import { fetchRevenueCatEntitlement } from '../revenuecat';
 
 const router = express.Router();
 
-// ---- Cherry + promo allowlist ----
-// PLUS_PROMO_EMAILS lists sign-in emails that get Cherry + without paying.
-// The email comes from the verified token and the write goes through the
-// Admin SDK because the rules forbid clients from touching isPlus. Removing
-// an address revokes on the next sign-in; a paid entitlement is never touched.
+// ---- Cherry + entitlement sync ----
+// Every client calls this once after sign-in (and the web client again right
+// after a purchase). It settles users/{uid}.isPlus from two sources, in
+// order:
+//
+//   1. PLUS_PROMO_EMAILS: sign-in emails that get Cherry + without paying.
+//      The email comes from the verified token. Removing an address revokes
+//      on the next sign-in; a paid entitlement is never replaced by promo.
+//   2. RevenueCat's own record of the subscriber (server/revenuecat.ts). The
+//      webhook is the fast path for the same fact; this is the one that
+//      cannot be misconfigured away, so a web purchase survives sign-out even
+//      if the webhook never arrived. A definitive "not entitled" from
+//      RevenueCat revokes an entitlement that RevenueCat granted; an
+//      unreachable RevenueCat changes nothing.
+//
+// The write goes through the Admin SDK because the rules forbid clients from
+// touching isPlus.
 const PROMO_PRODUCT = 'promo_allowlist';
 const promoEmails = () =>
   new Set(
@@ -24,42 +37,61 @@ router.post('/api/plus-promo-sync', requireAuth, rateLimit('plus-promo', 20), as
     const email = String((req as any).firebaseUser?.email || '').toLowerCase();
     const listed = !!email && promoEmails().has(email);
 
-    const { getFirestore } = await import('firebase-admin/firestore');
+    await ensureAdminApp();
+    const { getFirestore, FieldValue } = await import('firebase-admin/firestore');
     const ref = getFirestore().collection('users').doc(uid);
     const snap = await ref.get();
     const data = snap.data() || {};
     const current = data.plusEntitlement || {};
     const heldByPromo = current.source === 'promo' && current.productId === PROMO_PRODUCT;
+    const heldByStore = typeof current.source === 'string' && current.source.startsWith('revenuecat_');
+    const now = new Date().toISOString();
 
+    // 1. Allowlist.
     if (listed) {
-      // Only fills a gap; a paid entitlement is never replaced by promo.
       if (!data.isPlus || heldByPromo) {
+        await ref.set(
+          { isPlus: true, plusEntitlement: { source: 'promo', productId: PROMO_PRODUCT, updatedAt: now } },
+          { merge: true }
+        );
+      }
+      return res.json({ isPlus: true, source: data.isPlus && !heldByPromo ? current.source : 'promo' });
+    }
+
+    // 2. RevenueCat.
+    const rc = await fetchRevenueCatEntitlement(uid);
+    if (rc?.active) {
+      const changed =
+        !data.isPlus ||
+        current.source !== rc.source ||
+        current.productId !== rc.productId ||
+        (current.expiresAt || null) !== (rc.expiresAt || null);
+      if (changed) {
         await ref.set(
           {
             isPlus: true,
             plusEntitlement: {
-              source: 'promo',
-              productId: PROMO_PRODUCT,
-              updatedAt: new Date().toISOString(),
+              source: rc.source,
+              productId: rc.productId || '',
+              ...(rc.expiresAt ? { expiresAt: rc.expiresAt } : { expiresAt: FieldValue.delete() }),
+              updatedAt: now,
             },
           },
           { merge: true }
         );
       }
-      return res.json({
-        isPlus: true,
-        source: data.isPlus && !heldByPromo ? current.source : 'promo',
-      });
+      return res.json({ isPlus: true, source: rc.source, verified: 'revenuecat' });
     }
 
-    if (heldByPromo) {
-      const { FieldValue } = await import('firebase-admin/firestore');
+    // 3. Nothing grants it. Revoke only what this endpoint or the webhook
+    //    granted, and only on a definitive answer.
+    if (heldByPromo || (heldByStore && rc && !rc.active)) {
       await ref.set({ isPlus: false, plusEntitlement: FieldValue.delete() }, { merge: true });
       return res.json({ isPlus: false, revoked: true });
     }
     return res.json({ isPlus: !!data.isPlus });
   } catch (err: any) {
-    console.error('Promo sync error:', err?.message || err);
+    console.error('Entitlement sync error:', err?.message || err);
     return res.status(500).json({ error: 'Could not check Cherry + status.' });
   }
 });

@@ -14,7 +14,7 @@
     "format:check": "prettier --check .",
     "test": "tsx test/action-link.logic.ts && tsx test/auth-action.logic.ts && npm run test:parity",
     "rules:deploy": "npx --yes firebase-tools@14 deploy --only firestore:rules",
-    "test:parity": "tsx scripts/archive-parity.ts && tsx scripts/unclaimed-parity.ts && tsx scripts/recurring-parity.ts && tsx scripts/reminder-parity.ts && tsx scripts/entitlement-check.ts && tsx scripts/seats-check.ts && tsx scripts/seat-claims-check.ts && tsx scripts/settled-check.ts",
+    "test:parity": "tsx scripts/archive-parity.ts && tsx scripts/unclaimed-parity.ts && tsx scripts/recurring-parity.ts && tsx scripts/reminder-parity.ts && tsx scripts/entitlement-check.ts && tsx scripts/seats-check.ts && tsx scripts/seat-claims-check.ts && tsx scripts/settled-check.ts && tsx scripts/rc-entitlement-check.ts",
     "test:rules": "firebase emulators:exec --only firestore \"tsx scripts/rules-test.ts\""
   },
   "overrides": {

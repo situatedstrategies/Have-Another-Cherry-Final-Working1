@@ -137,6 +137,22 @@ const STRIPE_PORTAL_URL = 'https://billing.stripe.com/p/login/bJe8wR3Xt08M1Ce889
 // Stores that manage their own subscriptions; Stripe's portal cannot help their customers.
 const SELF_MANAGED_STORES = ['app_store', 'mac_app_store', 'play_store', 'amazon'];
 
+/**
+ * Whether RevenueCat currently holds an active Cherry + entitlement for the
+ * configured user. Read straight from the SDK, so it is true on the very
+ * next sign-in after a purchase even before the profile catches up. False
+ * when billing is off or the SDK cannot answer.
+ */
+export async function plusEntitlementActive(): Promise<boolean> {
+  if (!Purchases.isConfigured()) return false;
+  try {
+    const info = await Purchases.getSharedInstance().getCustomerInfo();
+    return PLUS_ENTITLEMENT_ID in info.entitlements.active;
+  } catch {
+    return false;
+  }
+}
+
 export async function manageSubscriptionUrl(): Promise<string | null> {
   if (!Purchases.isConfigured()) return null;
   try {
