@@ -43,6 +43,18 @@ interface SplitEntry {
   split: number;
 }
 
+// Headers Gmail, Yahoo and Outlook read when deciding inbox versus spam. A
+// List-Unsubscribe header is the one they weigh most for a sender they have
+// not seen much of yet: without it a young domain's mail reads as a stranger
+// with no way out, with it the client offers an unsubscribe control and
+// treats the sender as accountable. The footer copy already promises the
+// same address; this puts it where the filters look. Reply-To reaches a
+// person, which is also a reputation signal.
+const DELIVERABILITY_HEADERS = {
+  'List-Unsubscribe': '<mailto:help@haveanothercherry.com?subject=Unsubscribe>',
+};
+const REPLY_TO_HELP = 'help@haveanothercherry.com';
+
 export async function sendInviteEmail(
   email: string,
   groupName: string,
@@ -112,6 +124,8 @@ export async function sendInviteEmail(
     .join(splitRows);
 
   const { data, error } = await resend.emails.send({
+    headers: DELIVERABILITY_HEADERS,
+    replyTo: REPLY_TO_HELP,
     from: 'Have Another Cherry <poolside@haveanothercherry.com>',
     to: [email],
     subject: safeFrom + ' invited you to ' + groupName + ' on Have Another Cherry',
@@ -160,6 +174,8 @@ export async function sendVerificationEmail(
     .join(escapeHtml(verifyLink));
 
   const { data, error } = await resend.emails.send({
+    headers: DELIVERABILITY_HEADERS,
+    replyTo: REPLY_TO_HELP,
     from: 'Have Another Cherry <verify@haveanothercherry.com>',
     to: [email],
     subject: 'Confirm your email for Have Another Cherry',
@@ -203,6 +219,8 @@ export async function sendResetEmail(email: string, resetLink: string, recipient
     .join(escapeHtml(resetLink));
 
   const { data, error } = await resend.emails.send({
+    headers: DELIVERABILITY_HEADERS,
+    replyTo: REPLY_TO_HELP,
     from: 'Have Another Cherry <reset@haveanothercherry.com>',
     to: [email],
     subject: 'Reset your Have Another Cherry password',
@@ -230,6 +248,8 @@ export async function sendWaitlistNotification(subscriberEmail: string) {
   const resend = new Resend(apiKey);
 
   const { data, error } = await resend.emails.send({
+    headers: DELIVERABILITY_HEADERS,
+    replyTo: REPLY_TO_HELP,
     from: 'Have Another Cherry <notifications@haveanothercherry.com>',
     to: 'poolside@haveanothercherry.com',
     subject: 'Cherry + waitlist signup',
@@ -264,6 +284,7 @@ export async function sendBetaSignupNotification(signup: {
   const resend = new Resend(apiKey);
 
   const { data, error } = await resend.emails.send({
+    headers: DELIVERABILITY_HEADERS,
     from: 'Have Another Cherry <notifications@haveanothercherry.com>',
     to: 'poolside@haveanothercherry.com',
     replyTo: signup.email,
@@ -329,6 +350,8 @@ export async function sendReminderEmail(
   </div>`;
 
   const { data, error } = await resend.emails.send({
+    headers: DELIVERABILITY_HEADERS,
+    replyTo: REPLY_TO_HELP,
     from: 'Have Another Cherry <tartcherry@haveanothercherry.com>',
     to: toEmail,
     subject: `A gentle reminder from ${fromName} (${groupName})`,
@@ -367,6 +390,7 @@ export async function sendSupportRequest(request: {
     : request.fromEmail;
 
   const { data, error } = await resend.emails.send({
+    headers: DELIVERABILITY_HEADERS,
     from: 'Have Another Cherry <notifications@haveanothercherry.com>',
     to: 'help@haveanothercherry.com',
     replyTo: request.fromEmail,
