@@ -71,6 +71,11 @@ env:
     value: strp_GBmLXMFpmQLojqqIGsZwCvRYjLT
     availability:
       - BUILD
+      # RUNTIME too: the server's entitlement sync (server/revenuecat.ts)
+      # asks RevenueCat about a subscriber with this same public key, which
+      # is what makes a purchase survive sign-out when the webhook does not
+      # arrive. A REVENUECAT_API_KEY secret, if ever added, takes precedence.
+      - RUNTIME
 
   # Cherry + promo allowlist: sign-in emails that get Cherry + without paying.
   # The owner, the App Store and Play review accounts, and anyone else the

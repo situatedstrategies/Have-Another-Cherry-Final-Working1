@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, authHeader } from './firebase';
 import { getFullMembers } from './lib/members';
 import { isDarkCherry } from './lib/money';
 import { hasPlus } from './lib/entitlements';
@@ -136,6 +136,11 @@ export default function App() {
     setSupportError,
   });
 
+  // RevenueCat's live answer for this user, read at sign-in (useAuthSession)
+  // and set after a purchase. ORed with the profile flag below so a paid
+  // customer is unlocked even before users/{uid}.isPlus catches up.
+  const [rcPlus, setRcPlus] = useState(false);
+
   const { handleSignOut, handleDeleteAccount } = useAuthSession({
     activeUser,
     setCurrentUser,
@@ -149,6 +154,7 @@ export default function App() {
     setExpenses,
     setShowSettings,
     setShowPrivacyModal,
+    setRcPlus,
   });
 
   const {
@@ -281,7 +287,7 @@ export default function App() {
   const statsVisibleExpenses = expenses.filter((e) => !isDarkCherry(e) || e.paidBy === activeUser);
 
   // Gates vault, thresholds, rhythm, insights and Dark Cherry creation.
-  const isPlus = hasPlus(userProfile);
+  const isPlus = hasPlus(userProfile) || rcPlus;
 
   // Each member's spending limit, and this user's shares that exceed their own.
   const memberThresholds: Record<string, number> = {};
@@ -757,8 +763,12 @@ export default function App() {
         <CherryPlusModal
           onClose={() => setShowCherryPlus(false)}
           customerEmail={currentUser?.email || userProfile?.email}
-          onPurchased={() =>
-            // Unlock now; the webhook writes the durable copy to users/{uid}.
+          onPurchased={() => {
+            // Unlock now. The durable copy on users/{uid} is written by the
+            // webhook and, independently, by the entitlement sync asked for
+            // here, so the purchase survives sign-out even if the webhook
+            // never lands.
+            setRcPlus(true);
             setUserProfile((prev: any) => ({
               ...(prev || {}),
               isPlus: true,
@@ -766,8 +776,11 @@ export default function App() {
                 source: 'revenuecat_web',
                 updatedAt: new Date().toISOString(),
               },
-            }))
-          }
+            }));
+            authHeader()
+              .then((h) => fetch('/api/plus-promo-sync', { method: 'POST', headers: h }))
+              .catch(() => {});
+          }}
         />
       )}
 

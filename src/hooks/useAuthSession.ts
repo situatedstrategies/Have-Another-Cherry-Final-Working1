@@ -11,7 +11,7 @@ import {
 } from 'firebase/auth';
 import { auth, db, authHeader, forgetKeepSignedIn } from '../firebase';
 import { disableWebPush } from '../lib/push';
-import { configureBilling } from '../lib/billing';
+import { configureBilling, plusEntitlementActive } from '../lib/billing';
 import type { Dispatch, SetStateAction } from 'react';
 import { Expense, Group } from '../types';
 
@@ -30,6 +30,7 @@ export function useAuthSession({
   setExpenses,
   setShowSettings,
   setShowPrivacyModal,
+  setRcPlus,
 }: {
   activeUser: any;
   setCurrentUser: Setter<any>;
@@ -43,17 +44,26 @@ export function useAuthSession({
   setExpenses: Setter<Expense[]>;
   setShowSettings: Setter<boolean>;
   setShowPrivacyModal: Setter<boolean>;
+  setRcPlus: Setter<boolean>;
 }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       if (!user) {
+        setRcPlus(false);
         setIsLoading(false);
       } else {
-        // Web billing is keyed to the Firebase uid so a purchase maps to users/{uid}.
-        configureBilling(user.uid).catch(console.error);
-        // Promo allowlist: the server writes the entitlement and the profile
-        // listener picks it up. Silent on failure.
+        // Web billing is keyed to the Firebase uid so a purchase maps to
+        // users/{uid}. Once configured, RevenueCat's own answer unlocks the
+        // session immediately: a paid customer must never see the paywall
+        // on sign-in because a profile write lagged or a webhook was lost.
+        setRcPlus(false);
+        configureBilling(user.uid)
+          .then(() => plusEntitlementActive())
+          .then((active) => setRcPlus(active))
+          .catch(console.error);
+        // Entitlement sync: promo allowlist plus RevenueCat, written by the
+        // server; the profile listener picks it up. Silent on failure.
         authHeader()
           .then((h) => fetch('/api/plus-promo-sync', { method: 'POST', headers: h }))
           .catch(() => {});
